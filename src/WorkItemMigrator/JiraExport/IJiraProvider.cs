@@ -20,6 +20,8 @@ namespace JiraExport
         IEnumerable<JObject> DownloadChangelog(string issueKey);
 
         string GetUserEmail(string usernameOrAccountId);
+        
+        string GetUsernameFromDisplayName(string displayName, string issueKey);
 
         IssueLinkType GetLinkType(string linkTypeString, string targetItemKey, out bool isInwardLink);
 
@@ -33,5 +35,7 @@ namespace JiraExport
         Task<List<RevisionAction<JiraAttachment>>> DownloadAttachments(JiraRevision rev);
 
         IEnumerable<JObject> GetCommitRepositories(string issueId);
+        
+        IEnumerable<JObject> GetPullRequests(string issueId, string applicationType = "stash");
     }
 }

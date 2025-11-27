@@ -61,6 +61,8 @@ namespace JiraExport
             });
         }
 
+        private string _migrationWorkspace;
+
         private bool ExecuteMigration(CommandOption user, CommandOption password, CommandOption token, CommandOption url, CommandOption configFile, bool forceFresh, CommandOption continueOnCritical)
         {
             var itemsCount = 0;
@@ -81,6 +83,7 @@ namespace JiraExport
                 // Migration session level settings
                 // where the logs and journal will be saved, logs aid debugging, journal is for recovery of interupted process
                 string migrationWorkspace = config.Workspace;
+                _migrationWorkspace = migrationWorkspace;
 
                 var downloadOptions = (DownloadOptions)config.DownloadOptions;
 
@@ -92,6 +95,7 @@ namespace JiraExport
                     JQL = config.Query,
                     UsingJiraCloud = config.UsingJiraCloud,
                     IncludeDevelopmentLinks = config.IncludeDevelopmentLinks,
+                    IncludePullRequestLinks = config.IncludePullRequestLinks,
                     RepositoryMap = config.RepositoryMap,
                     JiraApiVersion = config.JiraApiVersion
                 };
@@ -253,7 +257,7 @@ namespace JiraExport
                     { "hosting-type", jiraVersion.DeploymentType } });
         }
 
-        private static void EndSession(int exportedItemsCount, Stopwatch sw, ExportIssuesSummary exportIssuesSummary)
+        private void EndSession(int exportedItemsCount, Stopwatch sw, ExportIssuesSummary exportIssuesSummary)
         {
             sw.Stop();
 
@@ -263,6 +267,14 @@ namespace JiraExport
             if (issuesReportString != "")
             {
                 Logger.Log(LogLevel.Warning, issuesReportString);
+            }
+
+            // Write unmapped users to file
+            if (!string.IsNullOrEmpty(_migrationWorkspace))
+            {
+                string unmappedUsersFile = Path.Combine(_migrationWorkspace, "unmapped-users.txt");
+                // Use JiraRevision as the type parameter since that's what JiraMapper uses
+                Migration.Common.BaseMapper<JiraExport.JiraRevision>.WriteUnmappedUsersToFile(unmappedUsersFile);
             }
 
             Logger.EndSession("jira-export-completed",

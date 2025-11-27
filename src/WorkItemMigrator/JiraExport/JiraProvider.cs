@@ -29,6 +29,7 @@ namespace JiraExport
         private ILookup<string, string> JiraKeyFieldCache = null;
 
         readonly Dictionary<string, string> _userEmailCache = new Dictionary<string, string>();
+        readonly Dictionary<string, string> _displayNameToUsernameCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         private readonly IJiraServiceWrapper _jiraServiceWrapper;
 
@@ -529,19 +530,24 @@ namespace JiraExport
             try
             {
                 var user = _jiraServiceWrapper.Users.GetUserAsync(usernameOrAccountId).Result;
+                
+                // For JIRA Server, always use username instead of email
+                if (!Settings.UsingJiraCloud)
+                {
+                    string username = user.Username ?? usernameOrAccountId;
+                    _userEmailCache.Add(usernameOrAccountId, username);
+                    return username;
+                }
+                
+                // For JIRA Cloud, use email if available, otherwise accountId
                 var isUserEmailMissing = string.IsNullOrEmpty(user.Email);
                 if (isUserEmailMissing)
                 {
                     Logger.Log(LogLevel.Info,
-                        Settings.UsingJiraCloud
-                            ? $"Email is not public for user '{usernameOrAccountId}' in Jira," +
-                            $" using usernameOrAccountId '{usernameOrAccountId}' for mapping." +
-                            $" You may safely ignore this warning, unless there is a subsequent warning about" +
-                            $" the username/accountId being missing in the usermapping file."
-                            : $"Email for user '{usernameOrAccountId}' not found in Jira," +
-                            $" using username '{usernameOrAccountId}' for mapping." +
-                            $" You may safely ignore this warning, unless there is a subsequent warning about" +
-                            $" the username/accountId being missing in the usermapping file."
+                        $"Email is not public for user '{usernameOrAccountId}' in Jira," +
+                        $" using usernameOrAccountId '{usernameOrAccountId}' for mapping." +
+                        $" You may safely ignore this warning, unless there is a subsequent warning about" +
+                        $" the username/accountId being missing in the usermapping file."
                     );
                     exportIssuesSummary.AddUnmappedUser(usernameOrAccountId);
                 }
@@ -558,6 +564,57 @@ namespace JiraExport
                 _userEmailCache.Add(usernameOrAccountId, usernameOrAccountId);
                 return usernameOrAccountId;
             }
+        }
+
+        public string GetUsernameFromDisplayName(string displayName, string issueKey)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+                return null;
+
+            // Check cache first
+            if (_displayNameToUsernameCache.TryGetValue(displayName, out string cachedUsername))
+            {
+                return cachedUsername;
+            }
+
+            try
+            {
+                // Use the mention API to look up users
+                // Try full display name first, then fall back to first few characters
+                var queries = new[] { displayName, displayName.Length > 3 ? displayName.Substring(0, 3) : displayName };
+                
+                foreach (var query in queries)
+                {
+                    var url = $"rest/internal/2/users/mention?maxResults=10&issueKey={Uri.EscapeDataString(issueKey)}&query={Uri.EscapeDataString(query)}";
+                    
+                    var response = _jiraServiceWrapper.RestClient.ExecuteRequestAsync(Method.GET, url).Result;
+                    
+                    if (response != null && response is JArray users)
+                    {
+                        // Find exact match by displayName (case-insensitive)
+                        foreach (var user in users)
+                        {
+                            var userDisplayName = user["displayName"]?.ToString();
+                            if (string.Equals(userDisplayName, displayName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                var username = user["name"]?.ToString();
+                                if (!string.IsNullOrWhiteSpace(username))
+                                {
+                                    _displayNameToUsernameCache[displayName] = username;
+                                    return username;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Debug, $"Failed to look up username for display name '{displayName}' using mention API: {ex.Message}");
+            }
+
+            // Return null if lookup fails - caller will use original fromString/toString
+            return null;
         }
 
         public string GetCustomId(string propertyName)
@@ -613,6 +670,37 @@ namespace JiraExport
         {
             var response = (JObject)_jiraServiceWrapper.RestClient.ExecuteRequestAsync(Method.GET, $"/rest/dev-status/latest/issue/detail?issueId={issueId}&applicationType=stash&dataType=repository").Result;
             return response.SelectTokens("$.detail[*].repositories[*]").Cast<JObject>();
+        }
+
+        public IEnumerable<JObject> GetPullRequests(string issueId, string applicationType = "stash")
+        {
+            try
+            {
+                var url = $"/rest/dev-status/1.0/issue/detail?issueId={issueId}&applicationType={Uri.EscapeDataString(applicationType)}&dataType=pullrequest";
+                var response = (JObject)_jiraServiceWrapper.RestClient.ExecuteRequestAsync(Method.GET, url).Result;
+                
+                // Extract pull requests from the response structure: detail[*].pullRequests[*]
+                var pullRequests = new List<JObject>();
+                var details = response.SelectTokens("$.detail[*]");
+                foreach (var detail in details)
+                {
+                    var prs = detail.SelectTokens("$.pullRequests[*]");
+                    foreach (var pr in prs)
+                    {
+                        if (pr is JObject prObj)
+                        {
+                            pullRequests.Add(prObj);
+                        }
+                    }
+                }
+                
+                return pullRequests;
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Debug, $"Failed to fetch pull requests for issue ID '{issueId}': {ex.Message}");
+                return Enumerable.Empty<JObject>();
+            }
         }
     }
 }

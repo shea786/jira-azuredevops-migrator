@@ -82,7 +82,7 @@ namespace JiraExport
                                 HandleAttachmentChange(item, attachmentChanges, attachments);
                                 break;
                             default:
-                                HandleFieldChange(item, jiraProvider, fieldChanges, fields);
+                                HandleFieldChange(item, jiraProvider, fieldChanges, fields, issueKey);
                                 break;
                         }
                     }
@@ -105,6 +105,11 @@ namespace JiraExport
             listOfRevisions.AddRange(commentRevisions);
 
             var settings = jiraProvider.GetSettings();
+            if (settings.IncludePullRequestLinks)
+            {
+                List<JiraRevision> prCommentRevisions = BuildPullRequestCommentRevisions(jiraItem, jiraProvider);
+                listOfRevisions.AddRange(prCommentRevisions);
+            }
             if (settings.IncludeDevelopmentLinks)
             {
                 if (settings.RepositoryMap == null)
@@ -179,9 +184,9 @@ namespace JiraExport
                 fields[customFieldName] = item.FromString;
         }
 
-        private static void HandleFieldChange(JiraChangeItem item, IJiraProvider jiraProvider, Dictionary<string, object> fieldChanges, Dictionary<string, object> fields)
+        private static void HandleFieldChange(JiraChangeItem item, IJiraProvider jiraProvider, Dictionary<string, object> fieldChanges, Dictionary<string, object> fields, string issueKey)
         {
-            var (fieldref, from, to) = TransformFieldChange(item, jiraProvider);
+            var (fieldref, from, to) = TransformFieldChange(item, jiraProvider, issueKey);
 
             fieldChanges[fieldref] = to;
 
@@ -256,6 +261,65 @@ namespace JiraExport
             };
         }
 
+        private static List<JiraRevision> BuildPullRequestCommentRevisions(JiraItem jiraItem, IJiraProvider jiraProvider)
+        {
+            var prRevisions = new List<JiraRevision>();
+            
+            try
+            {
+                var pullRequests = jiraProvider.GetPullRequests(jiraItem.Id, "stash");
+                
+                // Collect all PR URLs
+                var prUrls = new List<string>();
+                var prAuthor = "Unknown";
+                var prCreatedDate = DateTime.Now;
+                
+                foreach (var pr in pullRequests)
+                {
+                    var prUrl = pr["url"]?.ToString();
+                    if (!string.IsNullOrWhiteSpace(prUrl))
+                    {
+                        prUrls.Add(prUrl);
+                        // Use the first PR's author and date for the comment
+                        if (prUrls.Count == 1)
+                        {
+                            prAuthor = pr["author"]?["name"]?.ToString() ?? pr["author"]?["displayName"]?.ToString() ?? "Unknown";
+                            prCreatedDate = pr["updateDate"]?.Value<DateTime?>() ?? pr["createdDate"]?.Value<DateTime?>() ?? DateTime.Now;
+                        }
+                    }
+                }
+                
+                // Create a single comment with all PR links, one per line (handles newlines like description)
+                if (prUrls.Count > 0)
+                {
+                    var commentBody = string.Join("\n", prUrls);
+                    var renderedBody = commentBody;
+                    
+                    var prRevision = new JiraRevision(jiraItem)
+                    {
+                        Author = prAuthor,
+                        Time = prCreatedDate,
+                        Fields = new Dictionary<string, object>() 
+                        { 
+                            { "comment", commentBody }, 
+                            { "comment$Rendered", renderedBody } 
+                        },
+                        AttachmentActions = new List<RevisionAction<JiraAttachment>>(),
+                        LinkActions = new List<RevisionAction<JiraLink>>()
+                    };
+                    
+                    prRevisions.Add(prRevision);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log(LogLevel.Warning, $"Failed to build pull request comment revisions for issue '{jiraItem.Key}': {ex.Message}");
+            }
+            
+            return prRevisions;
+        }
+
+
         private static bool UndoAttachmentChange(RevisionAction<JiraAttachment> attachmentChange, List<JiraAttachment> attachments)
         {
             if (attachmentChange.ChangeType == RevisionChangeType.Removed)
@@ -312,7 +376,7 @@ namespace JiraExport
             };
         }
 
-        private static (string, string, string) TransformFieldChange(JiraChangeItem item, IJiraProvider jira)
+        private static (string, string, string) TransformFieldChange(JiraChangeItem item, IJiraProvider jira, string issueKey)
         {
             var objectFields = new HashSet<string>() { "assignee", "creator", "reporter" };
             string from, to = string.Empty;
@@ -321,8 +385,27 @@ namespace JiraExport
 
             if (objectFields.Contains(fieldId))
             {
-                from = item.From;
-                to = item.To;
+                // For user fields, look up username from display name using mention API
+                // If lookup fails, fall back to original fromString/toString
+                if (!string.IsNullOrWhiteSpace(item.FromString))
+                {
+                    var lookedUpUsername = jira.GetUsernameFromDisplayName(item.FromString, issueKey);
+                    from = lookedUpUsername ?? item.FromString;
+                }
+                else
+                {
+                    from = item.FromString;
+                }
+                
+                if (!string.IsNullOrWhiteSpace(item.ToString))
+                {
+                    var lookedUpUsername = jira.GetUsernameFromDisplayName(item.ToString, issueKey);
+                    to = lookedUpUsername ?? item.ToString;
+                }
+                else
+                {
+                    to = item.ToString;
+                }
             }
             else
             {
@@ -494,7 +577,15 @@ namespace JiraExport
                     && prop.Value["emailAddress"] != null && prop.Value["avatarUrls"] != null
                     && prop.Value["displayName"] != null)
                 {
-                    value = prop.Value["key"].ToString();
+                    // Prefer username (actual username) over name (display name) over key (user ID)
+                    if (prop.Value["username"] != null && !string.IsNullOrWhiteSpace(prop.Value["username"].ToString()))
+                    {
+                        value = prop.Value["username"].ToString();
+                    }
+                    else
+                    {
+                        value = prop.Value["key"].ToString();
+                    }
                 }
                 else if (prop.Value.Type == JTokenType.Date)
                 {
