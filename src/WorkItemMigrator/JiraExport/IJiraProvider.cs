@@ -20,8 +20,6 @@ namespace JiraExport
         IEnumerable<JObject> DownloadChangelog(string issueKey);
 
         string GetUserEmail(string usernameOrAccountId);
-        
-        string GetUsernameFromDisplayName(string displayName, string issueKey);
 
         IssueLinkType GetLinkType(string linkTypeString, string targetItemKey, out bool isInwardLink);
 

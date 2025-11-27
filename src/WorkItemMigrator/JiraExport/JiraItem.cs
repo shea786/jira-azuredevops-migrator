@@ -82,7 +82,7 @@ namespace JiraExport
                                 HandleAttachmentChange(item, attachmentChanges, attachments);
                                 break;
                             default:
-                                HandleFieldChange(item, jiraProvider, fieldChanges, fields, issueKey);
+                                HandleFieldChange(item, jiraProvider, fieldChanges, fields);
                                 break;
                         }
                     }
@@ -184,9 +184,9 @@ namespace JiraExport
                 fields[customFieldName] = item.FromString;
         }
 
-        private static void HandleFieldChange(JiraChangeItem item, IJiraProvider jiraProvider, Dictionary<string, object> fieldChanges, Dictionary<string, object> fields, string issueKey)
+        private static void HandleFieldChange(JiraChangeItem item, IJiraProvider jiraProvider, Dictionary<string, object> fieldChanges, Dictionary<string, object> fields)
         {
-            var (fieldref, from, to) = TransformFieldChange(item, jiraProvider, issueKey);
+            var (fieldref, from, to) = TransformFieldChange(item, jiraProvider);
 
             fieldChanges[fieldref] = to;
 
@@ -376,42 +376,13 @@ namespace JiraExport
             };
         }
 
-        private static (string, string, string) TransformFieldChange(JiraChangeItem item, IJiraProvider jira, string issueKey)
+        private static (string, string, string) TransformFieldChange(JiraChangeItem item, IJiraProvider jira)
         {
-            var objectFields = new HashSet<string>() { "assignee", "creator", "reporter" };
-            string from, to = string.Empty;
-
             string fieldId = item.FieldId ?? GetCustomFieldId(item.Field, jira) ?? item.Field;
-
-            if (objectFields.Contains(fieldId))
-            {
-                // For user fields, look up username from display name using mention API
-                // If lookup fails, fall back to original fromString/toString
-                if (!string.IsNullOrWhiteSpace(item.FromString))
-                {
-                    var lookedUpUsername = jira.GetUsernameFromDisplayName(item.FromString, issueKey);
-                    from = lookedUpUsername ?? item.FromString;
-                }
-                else
-                {
-                    from = item.FromString;
-                }
-                
-                if (!string.IsNullOrWhiteSpace(item.ToString))
-                {
-                    var lookedUpUsername = jira.GetUsernameFromDisplayName(item.ToString, issueKey);
-                    to = lookedUpUsername ?? item.ToString;
-                }
-                else
-                {
-                    to = item.ToString;
-                }
-            }
-            else
-            {
-                from = item.FromString;
-                to = item.ToString;
-            }
+            
+            // For all fields, use fromString/toString directly
+            string from = item.FromString;
+            string to = item.ToString;
 
             return (fieldId, from, to);
         }
