@@ -78,9 +78,6 @@ namespace Common.Config
         [JsonProperty(PropertyName = "include-development-links")]
         public bool IncludeDevelopmentLinks { get; set; } = false;
 
-        [JsonProperty(PropertyName = "include-pr-links")]
-        public bool IncludePullRequestLinks { get; set; } = false;
-
         [JsonProperty(PropertyName = "include-jira-css-styles")]
         public bool IncludeJiraCssStyles { get; set; } = false;
 

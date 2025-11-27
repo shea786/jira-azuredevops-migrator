@@ -105,11 +105,6 @@ namespace JiraExport
             listOfRevisions.AddRange(commentRevisions);
 
             var settings = jiraProvider.GetSettings();
-            if (settings.IncludePullRequestLinks)
-            {
-                List<JiraRevision> prCommentRevisions = BuildPullRequestCommentRevisions(jiraItem, jiraProvider);
-                listOfRevisions.AddRange(prCommentRevisions);
-            }
             if (settings.IncludeDevelopmentLinks)
             {
                 if (settings.RepositoryMap == null)
@@ -263,67 +258,6 @@ namespace JiraExport
                 LinkActions = new List<RevisionAction<JiraLink>>()
             };
         }
-
-        private static List<JiraRevision> BuildPullRequestCommentRevisions(JiraItem jiraItem, IJiraProvider jiraProvider)
-        {
-            var prRevisions = new List<JiraRevision>();
-            
-            try
-            {
-                var pullRequests = jiraProvider.GetPullRequests(jiraItem.Id, "stash");
-                
-                // Collect all PR URLs
-                var prUrls = new List<string>();
-                var prAuthor = "Unknown";
-                var prCreatedDate = DateTime.Now;
-                
-                foreach (var pr in pullRequests)
-                {
-                    var prUrl = pr["url"]?.ToString();
-                    if (!string.IsNullOrWhiteSpace(prUrl))
-                    {
-                        // Replace the old Bitbucket domain with the new one
-                        prUrl = prUrl.Replace("bitbucket.uk.ngridtools.com", "bitbucket.neso.energy");
-                        prUrls.Add(prUrl);
-                        // Use the first PR's author and date for the comment
-                        if (prUrls.Count == 1)
-                        {
-                            prAuthor = pr["author"]?["name"]?.ToString() ?? pr["author"]?["displayName"]?.ToString() ?? "Unknown";
-                            prCreatedDate = pr["updateDate"]?.Value<DateTime?>() ?? pr["createdDate"]?.Value<DateTime?>() ?? DateTime.Now;
-                        }
-                    }
-                }
-                
-                // Create a single comment with all PR links, one per line (handles newlines like description)
-                if (prUrls.Count > 0)
-                {
-                    var commentBody = string.Join("\n", prUrls);
-                    var renderedBody = commentBody;
-                    
-                    var prRevision = new JiraRevision(jiraItem)
-                    {
-                        Author = prAuthor,
-                        Time = prCreatedDate,
-                        Fields = new Dictionary<string, object>() 
-                        { 
-                            { "comment", commentBody }, 
-                            { "comment$Rendered", renderedBody } 
-                        },
-                        AttachmentActions = new List<RevisionAction<JiraAttachment>>(),
-                        LinkActions = new List<RevisionAction<JiraLink>>()
-                    };
-                    
-                    prRevisions.Add(prRevision);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log(LogLevel.Warning, $"Failed to build pull request comment revisions for issue '{jiraItem.Key}': {ex.Message}");
-            }
-            
-            return prRevisions;
-        }
-
 
         private static bool UndoAttachmentChange(RevisionAction<JiraAttachment> attachmentChange, List<JiraAttachment> attachments)
         {

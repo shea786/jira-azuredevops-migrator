@@ -621,35 +621,5 @@ namespace JiraExport
             return response.SelectTokens("$.detail[*].repositories[*]").Cast<JObject>();
         }
 
-        public IEnumerable<JObject> GetPullRequests(string issueId, string applicationType = "stash")
-        {
-            try
-            {
-                var url = $"/rest/dev-status/1.0/issue/detail?issueId={issueId}&applicationType={Uri.EscapeDataString(applicationType)}&dataType=pullrequest";
-                var response = (JObject)_jiraServiceWrapper.RestClient.ExecuteRequestAsync(Method.GET, url).Result;
-                
-                // Extract pull requests from the response structure: detail[*].pullRequests[*]
-                var pullRequests = new List<JObject>();
-                var details = response.SelectTokens("$.detail[*]");
-                foreach (var detail in details)
-                {
-                    var prs = detail.SelectTokens("$.pullRequests[*]");
-                    foreach (var pr in prs)
-                    {
-                        if (pr is JObject prObj)
-                        {
-                            pullRequests.Add(prObj);
-                        }
-                    }
-                }
-                
-                return pullRequests;
-            }
-            catch (Exception ex)
-            {
-                Logger.Log(LogLevel.Debug, $"Failed to fetch pull requests for issue ID '{issueId}': {ex.Message}");
-                return Enumerable.Empty<JObject>();
-            }
-        }
     }
 }

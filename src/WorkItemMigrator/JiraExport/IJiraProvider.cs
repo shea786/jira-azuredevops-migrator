@@ -33,7 +33,5 @@ namespace JiraExport
         Task<List<RevisionAction<JiraAttachment>>> DownloadAttachments(JiraRevision rev);
 
         IEnumerable<JObject> GetCommitRepositories(string issueId);
-        
-        IEnumerable<JObject> GetPullRequests(string issueId, string applicationType = "stash");
     }
 }

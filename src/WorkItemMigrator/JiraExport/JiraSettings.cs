@@ -19,7 +19,6 @@ namespace JiraExport
         public string JQL { get; set; }
         public bool UsingJiraCloud { get; set; }
         public bool IncludeDevelopmentLinks { get; set; }
-        public bool IncludePullRequestLinks { get; set; }
         public int JiraApiVersion { get; set; }
         public RepositoryMap RepositoryMap { get; set; }
 
