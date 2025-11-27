@@ -182,6 +182,25 @@ namespace WorkItemImport
                 }
                 else
                 {
+                    // For comment-only revisions (no attachments, no links), ensure ChangedDate is set correctly
+                    // Attachments and links update ChangedDate when they save, but comments don't
+                    if (!rev.Attachments.Any() && !rev.Links.Any())
+                    {
+                        // Ensure ChangedDate is set to the revision's time for comment-only revisions
+                        // This ensures comments get the correct timestamp in Azure DevOps
+                        if (wi.Fields.ContainsKey(WiFieldReference.ChangedDate))
+                        {
+                            DateTime currentChangedDate = (DateTime)wi.Fields[WiFieldReference.ChangedDate];
+                            if (currentChangedDate.ToUniversalTime() < rev.Time.ToUniversalTime())
+                            {
+                                wi.Fields[WiFieldReference.ChangedDate] = rev.Time;
+                            }
+                        }
+                        else
+                        {
+                            wi.Fields[WiFieldReference.ChangedDate] = rev.Time;
+                        }
+                    }
                     _witClientUtils.SaveWorkItemFields(wi, settings);
                 }
 
