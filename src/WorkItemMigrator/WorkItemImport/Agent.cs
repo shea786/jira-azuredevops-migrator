@@ -184,7 +184,7 @@ namespace WorkItemImport
                 {
                     // For comment-only revisions (no attachments, no links), ensure ChangedDate is set correctly
                     // Attachments and links update ChangedDate when they save, but comments don't
-                    if (!rev.Attachments.Any() && !rev.Links.Any())
+                    if (!rev.Attachments.Any() && !rev.Links.Any() && rev.DevelopmentLink == null)
                     {
                         // Ensure ChangedDate is set to the revision's time for comment-only revisions
                         // This ensures comments get the correct timestamp in Azure DevOps
