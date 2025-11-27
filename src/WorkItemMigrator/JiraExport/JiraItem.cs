@@ -228,11 +228,11 @@ namespace JiraExport
             var comments = jiraProvider.GetCommentsByItemKey(jiraItem.Key);
             return comments.Select((c, i) =>
             {
-                return BuildCommentRevision(c, c.RenderedBody, jiraItem);
+                return BuildCommentRevision(c, c.RenderedBody, jiraItem, jiraProvider);
             }).ToList();
         }
 
-        private static JiraRevision BuildCommentRevision(Comment c, string rc, JiraItem jiraItem)
+        private static JiraRevision BuildCommentRevision(Comment c, string rc, JiraItem jiraItem, IJiraProvider jiraProvider)
         {
             var author = "NoAuthorDefined";
             if (c.AuthorUser is null)
@@ -241,13 +241,16 @@ namespace JiraExport
             }
             else
             {
-                if (c.AuthorUser.Username is null)
+                // Use GetUserEmail to resolve the user properly (will get email for JIRA Server if available, or username)
+                // This ensures proper user mapping through the user mapping file
+                string userIdentifier = c.AuthorUser.Username ?? c.AuthorUser.AccountId;
+                if (!string.IsNullOrWhiteSpace(userIdentifier))
                 {
-                    author = GetAuthorIdentityOrDefault(c.AuthorUser.AccountId);
+                    author = jiraProvider.GetUserEmail(userIdentifier);
                 }
                 else
                 {
-                    author = c.AuthorUser.Username;
+                    author = GetAuthorIdentityOrDefault(c.AuthorUser.AccountId);
                 }
             }
 
@@ -279,6 +282,8 @@ namespace JiraExport
                     var prUrl = pr["url"]?.ToString();
                     if (!string.IsNullOrWhiteSpace(prUrl))
                     {
+                        // Replace the old Bitbucket domain with the new one
+                        prUrl = prUrl.Replace("bitbucket.uk.ngridtools.com", "bitbucket.neso.energy");
                         prUrls.Add(prUrl);
                         // Use the first PR's author and date for the comment
                         if (prUrls.Count == 1)
