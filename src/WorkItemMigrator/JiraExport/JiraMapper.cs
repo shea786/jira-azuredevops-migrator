@@ -104,9 +104,6 @@ namespace JiraExport
                             case "MapSprint":
                                 value = IfChanged<string>(item.Source, isCustomField, FieldMapperUtils.MapSprint);
                                 break;
-                            case "MapTags":
-                                value = IfChanged<string>(item.Source, isCustomField, FieldMapperUtils.MapTags);
-                                break;
                             case "MapArray":
                                 value = IfChanged<string>(item.Source, isCustomField, FieldMapperUtils.MapArray);
                                 break;
@@ -154,45 +151,14 @@ namespace JiraExport
                         {
                             if (wit == "All" || wit == "Common")
                             {
-                                // For System.Tags, allow multiple source fields - store them in a list
-                                if (item.Target == WiFieldReference.Tags && commonFields.ContainsKey(item.Target))
-                                {
-                                    // Get existing list or create new one
-                                    var existingValue = commonFields[item.Target];
-                                    // Replace with a function that combines both
-                                    commonFields[item.Target] = r =>
-                                    {
-                                        var (include1, val1) = existingValue(r);
-                                        var (include2, val2) = value(r);
-                                        return CombineTagValues(include1, val1, include2, val2);
-                                    };
-                                }
-                                else
-                                {
-                                    commonFields.Add(item.Target, value);
-                                }
+                                commonFields.Add(item.Target, value);
                             }
                             else
                             {
                                 // If we haven't mapped the Type then we probably want to ignore the field
                                 if (typeFields.TryGetValue(wit, out FieldMapping<JiraRevision> fm))
                                 {
-                                    // For System.Tags, allow multiple source fields - store them in a list
-                                    if (item.Target == WiFieldReference.Tags && fm.ContainsKey(item.Target))
-                                    {
-                                        // Get existing function and combine with new one
-                                        var existingValue = fm[item.Target];
-                                        fm[item.Target] = r =>
-                                        {
-                                            var (include1, val1) = existingValue(r);
-                                            var (include2, val2) = value(r);
-                                            return CombineTagValues(include1, val1, include2, val2);
-                                        };
-                                    }
-                                    else
-                                    {
-                                        fm.Add(item.Target, value);
-                                    }
+                                    fm.Add(item.Target, value);
                                 }
                                 else
                                 {
@@ -201,9 +167,9 @@ namespace JiraExport
                             }
                         }
 
-                        catch (Exception ex)
+                        catch (Exception)
                         {
-                            Logger.Log(LogLevel.Warning, $"Error adding field mapping for '{item.Source}' to '{item.Target}': {ex.Message}");
+                            Logger.Log(LogLevel.Warning, $"Ignoring target mapping with key: '{item.Target}', because it is already configured.");
                         }
                     }
                 }
@@ -415,42 +381,6 @@ namespace JiraExport
             HashSet<string> types = new HashSet<string>();
             _config.TypeMap.Types.ForEach(t => types.Add(t.Target));
             return types;
-        }
-
-        private (bool, object) CombineTagValues(bool include1, object val1, bool include2, object val2)
-        {
-            var tagValues = new List<string>();
-
-            if (include1 && val1 != null)
-            {
-                var tags1 = val1.ToString();
-                if (!string.IsNullOrWhiteSpace(tags1))
-                {
-                    // Split by semicolon (Azure DevOps format) and add each tag
-                    var tags = tags1.Split(';').Select(t => t.Trim()).Where(t => !string.IsNullOrWhiteSpace(t));
-                    tagValues.AddRange(tags);
-                }
-            }
-
-            if (include2 && val2 != null)
-            {
-                var tags2 = val2.ToString();
-                if (!string.IsNullOrWhiteSpace(tags2))
-                {
-                    // Split by semicolon (Azure DevOps format) and add each tag
-                    var tags = tags2.Split(';').Select(t => t.Trim()).Where(t => !string.IsNullOrWhiteSpace(t));
-                    tagValues.AddRange(tags);
-                }
-            }
-
-            if (tagValues.Count == 0)
-            {
-                return (false, null);
-            }
-
-            // Remove duplicates and join with semicolons
-            var uniqueTags = tagValues.Distinct(StringComparer.OrdinalIgnoreCase);
-            return (true, string.Join(";", uniqueTags));
         }
 
         private Func<JiraRevision, (bool, object)> IfChanged<T>(string sourceField, bool isCustomField, Func<T, object> mapperFunc = null)

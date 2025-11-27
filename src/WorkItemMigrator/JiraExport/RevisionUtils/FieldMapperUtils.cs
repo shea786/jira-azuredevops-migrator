@@ -137,23 +137,6 @@ namespace JiraExport
             return (true, value);
         }
 
-
-
-        public static object MapTags(string labels)
-        {
-            if (labels == null)
-                throw new ArgumentNullException(nameof(labels));
-
-            if (string.IsNullOrWhiteSpace(labels))
-                return string.Empty;
-
-            var tags = labels.Split(' ');
-            if (!tags.Any())
-                return string.Empty;
-            else
-                return string.Join(";", tags);
-        }
-
         public static object MapArray(string field)
         {
             if (field == null)
