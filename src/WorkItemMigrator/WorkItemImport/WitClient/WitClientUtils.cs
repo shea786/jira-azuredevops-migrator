@@ -738,7 +738,11 @@ namespace WorkItemImport
                 throw new ArgumentException(nameof(rev));
             }
 
-            var filteredRelations = wiItem.Revisions.SelectMany(r => r.Attachments.Where(a => a.Change == ReferenceChangeType.Added));
+            // Only look at revisions up to the current revision index to avoid deferring when
+            // images referenced in text are added in future revisions. The correction will
+            // happen when the image attachment is actually added in a later revision.
+            var filteredRelations = wiItem.Revisions.Where(r => r.Index <= rev.Index)
+                .SelectMany(r => r.Attachments.Where(a => a.Change == ReferenceChangeType.Added));
 
             foreach (var att in filteredRelations)
             {
